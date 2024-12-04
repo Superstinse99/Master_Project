@@ -1,0 +1,227 @@
+---
+title: "Chromosome_mapping"
+format: html
+editor: visual
+---
+
+## Chromosome extraction for mapping
+
+This needs to be done for each chromsome and will make it easier to run later code, as this task is computaionally heavy
+
+## Libraries
+
+```{r}
+# Load necessary libraries
+library(Biostrings)
+library(ShortRead)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+library(ggpubr)
+library(magrittr)
+library(AnnotationHub)
+library(BSgenome.Hsapiens.NCBI.GRCh38)
+
+
+```
+
+## Downloading TDP43
+
+```{r}
+download.dir <- fs::dir_create("~/projects/AP24.024_kickstart_master_thesis/", "RBNS", recurse = T)
+
+encode.all <- readr::read_tsv(
+  "https://www.encodeproject.org/metadata/?assay_title=eCLIP&assay_title=RNA+Bind-n-Seq&type=Experiment&files.analyses.status=released&files.preferred_default=true"
+)
+
+TARDBP.rbns <- encode.all %>%
+  dplyr::filter(Assay == "RNA Bind-n-Seq" & `Experiment target` == "TARDBP-human" & `Output type` == "enrichment") %>% mutate(
+    local.paths = file.path(download.dir, basename(`File download URL`))
+  )
+
+# Download the data
+for(i in 1:nrow(TARDBP.rbns)){
+  download.file(
+    url = TARDBP.rbns$`File download URL`[i],
+    destfile =  TARDBP.rbns$local.paths[i]
+  )
+}
+
+TARDBP.rbns.data <- lapply(TARDBP.rbns$local.paths, function(fn){
+  df <- readr::read_tsv(fn, show_col_types = F)
+  rbp <- colnames(df)[1] %>% stringr::str_remove_all("\\[|\\]")
+  colnames(df)[1] <- "sequence"
+  
+  df %>%
+    pivot_longer(-sequence, names_to = "concentration", values_to = "enrichment") %>%
+    add_column(rbp = rbp, target = rbp) %>%
+    dplyr::select(rbp, sequence, target, everything())
+}) %>%
+  bind_rows() %>%
+  mutate(
+    sequence.length = paste(nchar(sequence), "nt", sep = "-"),
+    concentration.numeric = concentration %>% stringr::str_remove(" nM") %>% as.numeric()
+  )
+
+# First identify the sequences that have enrichment that are more the 2 standard deviations above the mean
+TARDBP.rbns.data %<>% 
+  group_by(rbp, sequence.length, concentration) %>%
+  mutate(
+    above.cutoff = enrichment > mean(enrichment)+2*sd(enrichment)
+  )
+
+```
+
+## Running Code
+
+First we need to make 7-mer mapping for each chromosome
+
+```{r}
+sites7mer <- function(data, chromosome, name) {
+  
+  # Filter the data
+  mapThese <- data %>% dplyr::filter(sequence.length == "7-nt" & concentration.numeric == 320 & above.cutoff)
+  
+  # Create PDict objects for both strands
+  pdict <- PDict(mapThese$sequence)
+  pdict.rev <- PDict(mapThese$sequence %>% DNAStringSet %>% reverseComplement %>% as.character)
+  
+  # Match PDict objects to the specified chromosome
+  hits.plus <- matchPDict(pdict, Hsapiens[[chromosome]])
+  hits.minus <- matchPDict(pdict.rev, Hsapiens[[chromosome]])
+  
+  # Create GRanges objects for the hits - POSITIVE
+  sites_positive <- lapply(seq_along(hits.plus), function(i) {
+    hits <- GRanges(
+      seqnames = chromosome,
+      ranges = hits.plus[[i]],
+      strand = "+"
+    )
+    hits$enrichment <- mapThese$enrichment[i]
+    return(hits)
+  }) %>% do.call(c, .)
+  
+    # Create GRanges objects for the hits - NEGATIVE
+  sites_negative <- lapply(seq_along(hits.minus), function(i) {
+    hits <- GRanges(
+      seqnames = chromosome,
+      ranges = hits.minus[[i]],
+      strand = "-"
+    )
+    hits$enrichment <- mapThese$enrichment[i]
+    return(hits)
+  }) %>% do.call(c, .)
+  
+  
+  # Combine positive and negative strand hits
+  combined_sites <- c(sites_positive, sites_negative)
+
+  return(combined_sites)
+  
+}
+
+# List of chromosomes
+#chromosomes <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22")
+chromosomes <- c("X", "Y")
+
+# Loop through each chromosome and save the results
+for (chr in chromosomes) {
+  result <- sites7mer(TARDBP.rbns.data, chr, paste0("mapped_7mer_chr", chr))
+  saveRDS(result, file = paste0("mapped_7mer_chr", chr, ".rds"))
+}
+```
+
+Then we need to make collapsed regions for each chromsome using the files created above
+
+```{r}
+######################## Function for mapping 7mers #################
+createSites7merChr <- function(data, chromosome, name) {
+  
+  # Filter the data
+  mapThese <- data %>% dplyr::filter(sequence.length == "7-nt" & concentration.numeric == 320 & above.cutoff)
+  
+  # Create PDict objects for both strands
+  pdict <- PDict(mapThese$sequence)
+  pdict.rev <- PDict(mapThese$sequence %>% DNAStringSet %>% reverseComplement %>% as.character)
+  
+  # Match PDict objects to the specified chromosome
+  hits.plus <- matchPDict(pdict, Hsapiens[[chromosome]])
+  hits.minus <- matchPDict(pdict.rev, Hsapiens[[chromosome]])
+  
+  # Create GRanges objects for the hits - POSITIVE
+  sites_positive <- lapply(seq_along(hits.plus), function(i) {
+    hits <- GRanges(
+      seqnames = chromosome,
+      ranges = hits.plus[[i]],
+      strand = "+"
+    )
+    hits$enrichment <- mapThese$enrichment[i]
+    return(hits)
+  }) %>% do.call(c, .)
+  
+    # Create GRanges objects for the hits - NEGATIVE
+  sites_negative <- lapply(seq_along(hits.minus), function(i) {
+    hits <- GRanges(
+      seqnames = chromosome,
+      ranges = hits.minus[[i]],
+      strand = "-"
+    )
+    hits$enrichment <- mapThese$enrichment[i]
+    return(hits)
+  }) %>% do.call(c, .)
+  
+  
+  # Combine positive and negative strand hits
+  combined_sites <- c(sites_positive, sites_negative)
+  
+  # Sort combined sites by ranges
+  combined_sites <- sort(combined_sites)
+  
+  # Sorting criteria
+  min.width <- 21
+  max.width <- 35
+  min.enrichment <- 1.5
+  
+  # collapsing
+  sites.collapsed <- GenomicRanges::reduce(combined_sites)
+
+  hits <- findOverlaps(sites.collapsed, GRanges(combined_sites))
+  tmpEnrich <- tibble(
+    redIndex = queryHits(hits),
+    allIndex = subjectHits(hits)
+)
+  
+  tmpEnrich$enrichment <- combined_sites$enrichment[tmpEnrich$allIndex]
+  tmpEnrich %<>%
+    group_by(redIndex) %>%
+    summarise(enrichment = max(enrichment))
+    
+  sites.collapsed$enrichment <- tmpEnrich$enrichment
+
+
+  index <- sites.collapsed$enrichment >= min.enrichment & 
+    width(sites.collapsed) >= min.width &
+    width(sites.collapsed) <= max.width
+  
+  # Simple peaks, alreadu have the collapsed strands 
+  # within the conditions
+  simple.peaks <- sites.collapsed[index,]
+  
+  # Assign the specified name to the result
+  assign(name, simple.peaks, envir = .GlobalEnv)
+  
+  return(simple.peaks)
+}
+
+# List of chromosomes
+chromosomes <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y")
+
+
+# Loop through each chromosome and use the saved results
+for (chr in chromosomes) {
+  result <- createSites7merChr(TARDBP.rbns.data, chr, paste0("simple_peaks_chr", chr))
+  saveRDS(result, file = paste0("simple_peaks_chr", chr, ".rds"))
+}
+
+
+```

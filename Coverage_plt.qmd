@@ -1,0 +1,193 @@
+---
+title: "Coverage_plt"
+format: html
+editor: visual
+---
+
+## Genes and TDP43 binding site coverage
+
+Here we want to signify how much of the significant genes are covered by potential TDP43 binding sites
+
+## Running Code
+
+```{r}
+
+library(AnnotationHub)
+library(ensembldb)
+library(GenomicRanges)
+library(dplyr)
+library(readr)
+
+# Load necessary libraries
+library(Biostrings)
+library(ShortRead)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+library(ggpubr)
+library(magrittr)
+library(AnnotationHub)
+library(BSgenome.Hsapiens.NCBI.GRCh38)
+
+options(bitmapType='cairo')
+setAnnotationHubOption("CACHE", tools::R_user_dir("AnnotationHub"))
+
+#source("/opt/data/rnaseq/adpt/ng28685/VISUALIZATION_HELPERS.r")
+
+# Connect to annotationhub
+ah <- AnnotationHub()
+ensdb <- ah[["AH109606"]]
+
+```
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+
+significant_genes <- read_tsv("salmon_sigs.tsv")
+significant_genes_id <- significant_genes$ENSG
+# gene_ids_100 <- significant_genes$GeneIDs[1:200]
+peaks_dir <- "simple_peaks_data"
+
+chromosomes <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y")
+
+
+# Define the function
+calculate_coverage <- function(gene_list, ensdb, peaks_dir, chromosomes, output_file) {
+  
+  # Initialize an empty dataframe to store results
+  results <- tibble(gene_name = character(), gene_length = numeric(), coverage = numeric())
+  
+  for (gene in gene_list) {
+    
+    # Retrieve gene information
+    gene_info <- genes(ensdb, filter = GeneIdFilter(gene))
+    gene_name <- gene_info$gene_name
+    genomic_region <- as.character(seqnames(gene_info))
+    
+    # Skip genes not on the specified chromosomes
+    if (!(genomic_region %in% chromosomes)) {
+      next
+    }
+    
+    start_position <- start(gene_info)
+    end_position <- end(gene_info)
+    
+    # Save the length of the given gene
+    gene_length <- end_position - start_position
+    
+    # Load the corresponding simple_peaks data
+    peaks_file <- file.path(peaks_dir, paste0("simple_peaks_chr", genomic_region, ".rds"))
+    
+    # Check if the file exists before attempting to read it
+    if (!file.exists(peaks_file)) {
+      message(paste("File not found:", peaks_file))
+      next
+    }
+    
+    simple_peaks <- readRDS(peaks_file)
+    
+    # Create a GRanges object for the gene
+    gene_gr <- GRanges(
+      seqnames = genomic_region,
+      ranges = IRanges(start = start_position, end = end_position),
+      strand = strand(gene_info)
+    )
+    
+    # Find overlaps between the gene and the peaks
+    overlaps <- findOverlaps(gene_gr, simple_peaks)
+    
+    # Extract the overlapping ranges
+    overlapping_ranges <- simple_peaks[subjectHits(overlaps)]
+    
+    # Calculate the total length of the overlapping regions
+    overlap_length <- sum(width(overlapping_ranges))
+    
+    # Calculate the coverage percentage
+    coverage_percentage <- (overlap_length / gene_length) * 100
+    
+    # Append the result to the results dataframe
+    results <- bind_rows(results, tibble(
+      gene_name = gene_name,
+      gene_length = gene_length,
+      coverage = coverage_percentage
+    ))
+  }
+  
+  return(results)
+}
+
+
+results <- calculate_coverage(significant_genes_id, ensdb, peaks_dir, chromosomes, output_file)
+
+# Print the results
+print(results)
+```
+
+## Creating the plot
+
+```{r, fig.width=15, fig.height=10}
+#| label: fig-enrichments
+#| fig-cap: "Visualization of enrichment sorted regions and collapsed."
+#| fig-align: left
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+
+library(ggplot2)
+library(dplyr)
+
+# Assuming 'results' is your data frame with columns 'gene_length', 'coverage', and 'gene_name'
+
+highlight_genes <- c("SPTLC1", "WDR7", "CAV1", "GLT8D1", "ARPP21", "DNAJC7", "KIF5A", "TIA1", "ANXA11", "CCNF", "NEK1", "C21ORF2", "TBK1", "CHCHD10", "MATR3", "TUBA4A", "ERBB4", "HNRNPA2B1", "HNRNPA1", "ATXN1", "EPHA4", "PFN1", "C9ORF72", "SQSTM1", "UBQLN2", "SIGMAR1", "ATXN2", "OPTN", "SPG11", "VCP", "ANG", "FIG4", "UNC13A", "ELP3", "FUS", "TARDBP", "CHMP2B", "HFE", "VAPB", "DCTN1", "ALS2", "SETX", "NEFH", "SOD1", "STMN2", "HDGFL2", "SOD1", "C21ORF2")
+
+
+# Create a new column to indicate if the gene should be highlighted
+results <- results %>%
+  mutate(Significance = ifelse(gene_name %in% highlight_genes, "Significant", "normal"))
+
+# Plot with highlighted genes
+ggplot(results, aes(x = gene_length, y = coverage)) +
+  
+  geom_point(aes(color = Significance)) +
+  geom_text(data = subset(results, 
+                          Significance == "Significant"), 
+            aes(label = gene_name), 
+            vjust = -0.5, hjust = 0.5) +
+  scale_color_manual(values = c("Significant" = "orange", "normal" = "lightblue")) +
+  theme_minimal() +
+  labs(x = "Gene Length", y = "Coverage in %", title = "Gene Length vs Coverage") 
+  
+#coord_cartesian(xlim = c(0e+05, 1.5e+05), ylim = c(0, 4))
+
+```
+
+Zoomin in with only significan names (significant according to articles)
+
+```{r, fig.width=20, fig.height=10}
+#| label: fig-enrichments
+#| fig-cap: "Visualization of enrichment sorted regions and collapsed."
+#| fig-align: left
+#| echo: false
+#| fig-width: 10
+#| fig-height: 5
+
+
+# Create a new column to indicate if the gene should be highlighted
+#results <- results %>%
+#  mutate(highlight = ifelse(gene_name %in% highlight_genes, "highlight", "normal"))
+
+# Plot with highlighted genes
+ggplot(results, aes(x = gene_length, y = coverage)) +
+  
+  geom_point(aes(color = Significance)) +
+  geom_text(data = subset(results, 
+                          Significance == "Significant"), 
+            aes(label = gene_name), 
+            vjust = -0.5, hjust = 0.5) +
+  scale_color_manual(values = c("Significant" = "orange", "normal" = "lightblue")) +
+  theme_minimal() +
+  labs(x = "Gene Length", y = "Coverage in %", title = "Gene Length vs Coverage") +
+  coord_cartesian(xlim = c(0e+00, 1e+05), ylim = c(0, 3))
+```
