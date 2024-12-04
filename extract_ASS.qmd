@@ -1,0 +1,295 @@
+---
+title: "extract_ASS"
+format: html
+editor: visual
+---
+
+## Extracting alternative splice sites
+
+The code will run through each chromosome extracting the alternative splice sites in close proximity of potential TDP43 binding sites.
+
+## Running Code
+
+Libraries
+
+```{r}
+# Load necessary libraries
+library(Biostrings)
+library(ShortRead)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+library(ggpubr)
+library(magrittr)
+library(AnnotationHub)
+library(BSgenome.Hsapiens.NCBI.GRCh38)
+
+options(bitmapType='cairo')
+setAnnotationHubOption("CACHE", tools::R_user_dir("AnnotationHub"))
+
+#source("/opt/data/rnaseq/adpt/ng28685/VISUALIZATION_HELPERS.r")
+
+# Connect to annotationhub
+ah <- AnnotationHub()
+ensdb <- ah[["AH109606"]]
+
+```
+
+The necessary lists; simple_peaks_chrX, DOX_chrX are loaded in from previous runs.
+
+```{r}
+# How to read in the files
+# Chr19_simplePeaks <- readRDS("simple_peaks_data/simple_peaks_chr19.rds")
+# Chr19_simplePeaks_df <- as.data.frame(Chr19_simplePeaks)
+
+
+```
+
+### Example with chromosome 19
+
+Finding those close to hot spots for potential TDP43 binding
+
+```{r}
+
+# simple peaks data - Chromosome 19
+Chr19_simplePeaks <- readRDS("simple_peaks_data/simple_peaks_chr19.rds")
+Chr19_simplePeaks_df <- as.data.frame(Chr19_simplePeaks)
+
+# DOX splice sites - Chromosome 19
+DOX_chr19 <- readRDS("DOX_chr_data/DOX_chr19.rds")
+DOX_chr19_df <- as.data.frame(DOX_chr19)
+
+# close proximity to cluser is 10000 nucleotide distance, reaching atleast 3 simple peaks
+nucleotide_dist <- 1000
+peaks <- 3
+
+
+# Find DOX_chr19 sites close to at least 3 simple peaks
+find_close_sites <- function(dox_sites, simple_peaks, max_dist, min_peaks) {
+  
+  close_sites <- dox_sites[sapply(seq_along(dox_sites), function(i) {
+    
+    sum(countOverlaps(dox_sites[i], simple_peaks, maxgap = max_dist)) >= min_peaks
+  })]
+  
+  return(close_sites)
+}
+
+# Apply the function
+close_sites <- find_close_sites(DOX_chr19, Chr19_simplePeaks, nucleotide_dist, peaks)
+
+# Annotate with gene information
+annotate_genes <- function(gr, ensdb) {
+  genes <- genes(ensdb, columns = c("gene_id", "gene_name"))
+  overlaps <- findOverlaps(gr, genes)
+  gr$gene_id <- NA
+  gr$gene_name <- NA
+  gr$gene_id[queryHits(overlaps)] <- genes$gene_id[subjectHits(overlaps)]
+  gr$gene_name[queryHits(overlaps)] <- genes$gene_name[subjectHits(overlaps)]
+  return(gr)
+}
+
+# Annotate the close sites with gene information
+close_sites_annotated <- annotate_genes(close_sites, ensdb)
+
+# Filter out duplicates based on ID
+unique_close_sites <- close_sites_annotated[!duplicated(close_sites_annotated$ID)]
+
+# Sort the data based on the ID column
+sorted_unique_close_sites <- unique_close_sites[order(unique_close_sites$ID)]
+
+# Return the sorted and annotated GRanges object with unique IDs
+sorted_unique_close_sites
+```
+
+### Loop through all chromosomes
+
+```{r}
+library(GenomicRanges)
+library(AnnotationHub)
+library(ensembldb)
+
+# Connect to AnnotationHub and load the Ensembl database
+ah <- AnnotationHub()
+ensdb <- ah[["AH109606"]]  # Adjust the ID if necessary
+
+# Define parameters
+nucleotide_dist <- 10000
+peaks <- 3
+
+# Function to find close sites
+find_close_sites <- function(dox_sites, simple_peaks, max_dist, min_peaks) {
+  close_sites <- dox_sites[sapply(seq_along(dox_sites), function(i) {
+    sum(countOverlaps(dox_sites[i], simple_peaks, maxgap = max_dist)) >= min_peaks
+  })]
+  return(close_sites)
+}
+
+# Function to annotate with gene information
+annotate_genes <- function(gr, ensdb) {
+  genes <- genes(ensdb, columns = c("gene_id", "gene_name"))
+  overlaps <- findOverlaps(gr, genes)
+  gr$gene_id <- rep(NA, length(gr))
+  gr$gene_name <- rep(NA, length(gr))
+  gr$gene_id[queryHits(overlaps)] <- genes$gene_id[subjectHits(overlaps)]
+  gr$gene_name[queryHits(overlaps)] <- genes$gene_name[subjectHits(overlaps)]
+  return(gr)
+}
+
+# Initialize an empty GRanges object to store all results
+all_chromosomes <- GRanges()
+
+# List of chromosome numbers (adjust as necessary)
+chromosomes <- c(1:22, "X", "Y")
+
+# Loop through each chromosome
+for (chr in chromosomes) {
+  # Load the data for the current chromosome
+  simple_peaks_file <- paste0("simple_peaks_data/simple_peaks_chr", chr, ".rds")
+  dox_file <- paste0("DOX_chr_data/DOX_chr", chr, ".rds")
+  
+  Chr_simplePeaks <- readRDS(simple_peaks_file)
+  DOX_chr <- readRDS(dox_file)
+  
+  # Find close sites
+  close_sites <- find_close_sites(DOX_chr, Chr_simplePeaks, nucleotide_dist, peaks)
+  
+  # Annotate with gene information
+  close_sites_annotated <- annotate_genes(close_sites, ensdb)
+  
+  # Filter out duplicates based on ID
+  unique_close_sites <- close_sites_annotated[!duplicated(close_sites_annotated$ID)]
+  
+  # Sort the data based on the ID column
+  sorted_unique_close_sites <- unique_close_sites[order(unique_close_sites$ID)]
+  
+  # Combine with the results from other chromosomes
+  all_chromosomes <- c(all_chromosomes, sorted_unique_close_sites)
+}
+
+# Save the combined results to a file
+saveRDS(all_chromosomes, file = "all_chromosomes_combined.rds")
+
+# Return the combined GRanges object
+all_chromosomes
+```
+
+### Error handling, messages for each step
+
+It is the same code, but with added error statements to ensure everything is handled correctly
+
+```{r}
+# Loop through each chromosome
+for (chr in chromosomes) {
+  # Construct file paths
+  simple_peaks_file <- paste0("simple_peaks_data/simple_peaks_chr", chr, ".rds")
+  dox_file <- paste0("DOX_chr_data/DOX_chr", chr, ".rds")
+  
+  # Print file paths for debugging
+  cat("Processing chromosome:", chr, "\n")
+  cat("Simple peaks file:", simple_peaks_file, "\n")
+  cat("DOX file:", dox_file, "\n")
+  
+  # Check if files exist
+  if (!file.exists(simple_peaks_file)) {
+    cat("File not found:", simple_peaks_file, "\n")
+    next
+  }
+  if (!file.exists(dox_file)) {
+    cat("File not found:", dox_file, "\n")
+    next
+  }
+  
+  # Load the data for the current chromosome
+  Chr_simplePeaks <- tryCatch({
+    readRDS(simple_peaks_file)
+  }, error = function(e) {
+    cat("Error reading file:", simple_peaks_file, "\n", e, "\n")
+    return(NULL)
+  })
+  
+  DOX_chr <- tryCatch({
+    readRDS(dox_file)
+  }, error = function(e) {
+    cat("Error reading file:", dox_file, "\n", e, "\n")
+    return(NULL)
+  })
+  
+  # Skip if there was an error reading the files
+  if (is.null(Chr_simplePeaks) || is.null(DOX_chr)) {
+    next
+  }
+  
+  # Find close sites
+  cat("Finding close sites for chromosome:", chr, "\n")
+  close_sites <- tryCatch({
+    find_close_sites(DOX_chr, Chr_simplePeaks, nucleotide_dist, peaks)
+  }, error = function(e) {
+    cat("Error finding close sites for chromosome:", chr, "\n", e, "\n")
+    return(NULL)
+  })
+  
+  if (is.null(close_sites)) {
+    next
+  }
+  
+  # Annotate with gene information
+  cat("Annotating close sites for chromosome:", chr, "\n")
+  close_sites_annotated <- tryCatch({
+    annotate_genes(close_sites, ensdb)
+  }, error = function(e) {
+    cat("Error annotating close sites for chromosome:", chr, "\n", e, "\n")
+    return(NULL)
+  })
+  
+  if (is.null(close_sites_annotated)) {
+    next
+  }
+  
+  # Filter out duplicates based on ID
+  cat("Filtering duplicates for chromosome:", chr, "\n")
+  unique_close_sites <- close_sites_annotated[!duplicated(close_sites_annotated$ID)]
+  
+  # Sort the data based on the ID column
+  cat("Sorting data for chromosome:", chr, "\n")
+  sorted_unique_close_sites <- unique_close_sites[order(unique_close_sites$ID)]
+  
+  # Combine with the results from other chromosomes
+  all_chromosomes <- c(all_chromosomes, sorted_unique_close_sites)
+}
+```
+
+Plot try
+
+```{r}
+# Load necessary libraries
+library(ggplot2)
+
+# Count genes per chromosome
+chromosomes <- seqnames(all_chromosomes)
+gene_names <- mcols(all_chromosomes)$gene_name
+
+# Create a data frame from these columns
+df <- data.frame(seqnames = as.character(chromosomes), gene_name = gene_names)
+
+# Count the number of unique gene_names for each seqnames
+unique_gene_counts <- aggregate(gene_name ~ seqnames, data = df, FUN = function(x) length(unique(x)))
+
+# Define the correct order for seqnames
+correct_order <- c(as.character(1:22), "X")
+
+# Convert seqnames to a factor with the correct order
+unique_gene_counts$seqnames <- factor(unique_gene_counts$seqnames, levels = correct_order)
+
+# Order the data frame by seqnames
+unique_gene_counts <- unique_gene_counts[order(unique_gene_counts$seqnames), ]
+
+# Print the ordered results
+print(unique_gene_counts)
+
+# Plot the number of unique gene_names for each seqnames
+ggplot(unique_gene_counts, aes(x = seqnames, y = gene_name)) +
+  geom_bar(stat = "identity", fill = "#F08080") +
+  labs(x = "Chromosome", y = "Number Genes", title = "Genes per Chromosome") +
+  theme_minimal()
+```
