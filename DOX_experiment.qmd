@@ -1,0 +1,169 @@
+---
+title: "DOX/noDOX"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+
+# Load necessary libraries
+library(Biostrings)
+library(ShortRead)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+library(ggpubr)
+library(magrittr)
+library(AnnotationHub)
+library(BSgenome.Hsapiens.NCBI.GRCh38)
+```
+
+Loading data
+
+```{r}
+#setwd("/home/sagemaker-user/projects/DOXdata")
+file = "~/projects/SE.MATS.JC.txt"
+data = read.table(file, header = TRUE, sep = "", dec = ".")
+
+```
+
+Filter based on pvalue and inclusion level difference
+
+```{r}
+data$logP <- -log10(data$PValue)
+data$Psig <- ifelse(data$PValue < 0.05
+                    & (data$IncLevelDifference > 0.5 | data$IncLevelDifference < -0.5
+                       & data$FDR < 0.05),
+                    "Significant", "Not significant")
+
+```
+
+Volcano plot of all data
+
+```{r}
+# Volcano plot
+volcano_plot <- ggplot(data, aes(x = IncLevelDifference, 
+                                 y = logP, 
+                                 color = Psig == "Significant")) +
+  geom_vline(xintercept=c(-0.5, 0.5), 
+             col="red") +
+  
+  geom_hline(yintercept=-log10(0.05), 
+             col="red")+
+  
+  scale_color_manual(name = "Significance", 
+                     values = c("grey", "blue"), 
+                     labels = c("Not significant", "Significant" )) +
+  geom_point(size = 0.2) +
+  labs(title = "Significant diff. inclusion level values from log10(p-value = 0.5)", 
+       x = "Inclusion level difference", 
+       y = "log10(P-value)") + 
+  theme_minimal()
+
+# Display the plot
+print(volcano_plot)
+```
+
+Filter non significant hits away
+
+```{r}
+filtered_data <- data %>% dplyr::filter(Psig == "Significant")
+
+```
+
+Extract only the columns we need
+
+```{r}
+
+ranges = filtered_data[c("GeneID", 
+                         "chr",
+                         "strand", 
+                         "exonStart_0base", 
+                         "exonEnd", 
+                         "upstreamES", 
+                         "upstreamEE", 
+                         "downstreamES", 
+                         "downstreamEE" )]
+
+#Remove chr from the names
+ranges %<>% mutate(chr = chr %>% stringr::str_remove("chr"))
+ranges
+```
+
+Convert to g ranges, divided into interval types. Account for 0-based indices.
+
+```{r}
+# Main ranges
+
+# Create IDs
+ranges$longID <- sprintf(
+  "%s|%s:%s-%s_%s-%s_%s-%s",
+  ranges$chr,
+  ranges$exonStart_0base, ranges$exonEnd,
+  ranges$upstreamES, ranges$upstreamEE,
+  ranges$downstreamES, ranges$downstreamEE,
+  ranges$strand
+)
+
+
+gr_main <- GRanges(
+  seqnames = ranges$chr,
+  ID = ranges$longID,
+  ranges = IRanges(start = ranges$exonStart_0base %<>% {. + 1}, end = ranges$exonEnd %<>% {. + 1}),
+  strand = ranges$strand,
+  type = "main"
+)
+
+# Upstream ranges
+gr_upstream <- GRanges(
+  seqnames = ranges$chr,
+  ID = ranges$longID,
+  ranges = IRanges(start = ranges$upstreamES %<>% {. + 1}, end = ranges$upstreamEE %<>% {. + 1}),
+  strand = ranges$strand,
+  type = "upstream"
+)
+
+# Downstream ranges
+gr_downstream <- GRanges(
+  seqnames = ranges$chr,
+  ID = ranges$longID,
+  ranges = IRanges(start = ranges$downstreamES %<>% {. + 1}, end = ranges$downstreamEE %<>% {. + 1}),
+  strand = ranges$strand,
+  type = "downstream"
+)
+
+#Combine the types
+gr_combined <- c(gr_main, gr_upstream, gr_downstream)
+
+gr_combined
+
+#Save file
+save(gr_combined, file = "DOX_noDOX.RData")
+
+```
+
+The overlapping regions, plotting two strings
+
+```{r}
+# Extracting the information and their ranges
+# Assuming gr_combined is your GRanges object
+chromosomes <- unique(seqnames(gr_combined))
+
+for (chr in chromosomes) {
+  chr_data <- sort(subset(gr_combined, seqnames == chr))
+  saveRDS(chr_data, file = paste0("DOX_chr", chr, ".rds"))
+}
+
+```
+
+```{r}
+# print those within these regions
+start_coord <- 79610000
+end_coord <- 79668000    
+
+DOX_chr8_test <- sort(subset(gr_combined, seqnames == "8" & start(gr_combined) >= start_coord & end(gr_combined) <= end_coord))
+print(DOX_chr8_test)
+```
