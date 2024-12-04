@@ -1,0 +1,501 @@
+---
+title: "Overview_plot"
+format: html
+editor: visual
+---
+
+## Alternative splice site genomic locations and nearby TDP43 binding site
+
+The Quadro script will map the 7mers from RNA Bind'n'seq data, then the sites are collapsed to create the overlapping 7mer regions. The collapsed regions will then have add ons of n number of nucleotides in each end, increasing the width for collapsed regions.
+
+This will then be used together with the alternative splice sites aqcuired from rMATs, mapping the regions of TDP43 binding sites near the alternative splice sites. A specific distance will be set, with a max of 20.000 nucleotide distance from the alternative splice sites.
+
+1.  mapping 7mers
+2.  collapse regions and extended collapsed regions
+3.  Alternative splice sites
+4.  Map up/downstream TDP43 binding sites of alternative splice site
+
+# Loading libaries and data
+
+The dbplyr is expected to be version 2.3.4, if this is not the case, change it so it is version 2.3.4.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# Load necessary libraries
+library(Biostrings)
+library(ShortRead)
+library(tidyverse)
+library(scales)
+library(ggrepel)
+library(ggpubr)
+library(magrittr)
+library(AnnotationHub)
+library(BSgenome.Hsapiens.NCBI.GRCh38)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(cowplot)
+library(scales)
+
+options(bitmapType='cairo')
+setAnnotationHubOption("CACHE", tools::R_user_dir("AnnotationHub"))
+
+#source("/opt/data/rnaseq/adpt/ng28685/VISUALIZATION_HELPERS.r")
+
+# Connect to annotationhub
+ah <- AnnotationHub()
+ensdb <- ah[["AH109606"]]
+```
+
+# Functions 
+
+These are the functions used in the program for plotting and extending the potential binding sites.
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# Extract transcript models for a specific gene from AnnotationHub
+extractTXmodelsFromAH <- function(gene.of.interest){
+  tx.models <- ensembldb::select(
+    ensdb, keys = gene.of.interest,
+    columns = c("SEQNAME", "EXONSEQSTART", "EXONSEQEND", "SEQSTRAND", "EXONID", "GENEBIOTYPE", "GENEID", "GENENAME", "TXID", "TXBIOTYPE", "TXSUPPORTLEVEL", "EXONIDX"),
+    keytype = "GENENAME"
+  ) %>% dplyr::rename("start" = "EXONSEQSTART", "end" = "EXONSEQEND", "seqnames" = "SEQNAME", "strand" = "SEQSTRAND") %>%
+    dplyr::mutate(strand = ifelse(.$strand == 1, "+", "-")) %>%
+    dplyr::filter(seqnames %in% c(1:22, "X", "Y") & GENEBIOTYPE != "LRG_gene")
+  
+  return(tx.models)
+}
+
+# Functions to plot the TX models using ggtranscript
+plotTXmodelOverview <- function(txm){
+  require(ggtranscript)
+  require(scales)
+  
+  txm.spli.juncs <- to_intron(txm, "TXID")
+  
+  p.txmodels <- txm %>% 
+    ggplot(aes(
+      xstart = start,
+      xend = end,
+      y = TXID, fill = TXBIOTYPE
+    )) +
+    geom_range() +
+    geom_intron(
+      data = txm.spli.juncs,
+      aes(strand = strand)
+    ) +
+    theme_bw() +
+    theme(legend.position = "none") +
+    facet_grid(TXBIOTYPE~., space = "free", scales = "free_y") +
+    ylab("") +
+    scale_x_continuous(labels = comma) +
+    scale_fill_manual(
+      values = c(
+        "protein_coding" = "#8DD3C7", "lncRNA" = "#FFFFB3", "retained_intron" = "#BEBADA", "processed_transcript" = "#FB8072", "nonsense_mediated_decay" = "#80B1D3",
+        "processed_pseudogene" = "#FDB462", "unprocessed_pseudogene" = "#B3DE69", "misc_RNA" = "#FCCDE5", "snRNA" = "#D9D9D9", "miRNA" = "#BC80BD", "TEC" = "#CCEBC5",
+        "LRG_gene"= "#FFED6F", "transcribed_unprocessed_pseudogene" = "grey", "snoRNA" = "grey", "transcribed_processed_pseudogene" = "grey", 
+        "rRNA_pseudogene" = "grey", "IG_V_pseudogene" =  "grey", "IG_V_gene" = "grey", "transcribed_unitary_pseudogene" = "grey", "TR_V_gene" = "grey",
+        "unitary_pseudogene" = "grey", "non_stop_decay" = "grey", "TR_J_gene" = "grey", "polymorphic_pseudogene" = "grey", "scaRNA" = "grey", "rRNA" = "grey",
+        "IG_D_gene" = "grey", "pseudogene" = "grey", "TR_V_pseudogene" = "grey", "IG_C_gene" = "grey", "IG_J_gene" = "grey", "IG_C_pseudogene" = "grey",
+        "ribozyme" = "grey", "TR_C_gene" = "grey",  "sRNA" = "grey", "TR_D_gene" = "grey", "TR_J_pseudogene" = "grey", "IG_J_pseudogene" = "grey", 
+        "translated_processed_pseudogene" = "grey", "IG_pseudogene" = "grey", "scRNA" = "grey", "translated_unprocessed_pseudogene" = "grey", "vault_RNA" = "grey"
+      )
+    )
+  
+  return(p.txmodels)
+}
+
+
+
+collapse_proximity <- function(ranges, extension = 100) {
+  # Extend ranges by n nucleotides on each end
+  extended_ranges <- resize(ranges, width(ranges) + extension, fix = "center")
+  
+  # Collapse the extended ranges
+  collapsed_ranges <- GenomicRanges::reduce(extended_ranges)
+  collapsed_ranges_df <- as.data.frame(collapsed_ranges)
+  
+  # Calculate mean enrichment for each collapsed range
+  collapsed_ranges_df$mean_enrichment <- sapply(seq_along(collapsed_ranges), function(i) {
+    overlapping_ranges <- subsetByOverlaps(extended_ranges, collapsed_ranges[i])
+    mean(overlapping_ranges$enrichment)
+  })
+  
+  return(collapsed_ranges_df)
+}
+
+# collapsed_df <- collapse_proximity(Chr19_simplePeaks)
+```
+
+# Importing Data
+
+Here we import the eCLIP, RBNS and alternative splice site data. the eCLIP and RBNS data originates from encode project and the alternative splice sites originates from the rMATs analysis of DOX/no DOX data.
+
+### TDP43 RBNS data
+
+```{r}
+#| label: tardbpRBNSdata
+#| echo: false
+#| message: false
+#| warning: false
+#| include: false
+#| results: 'hide'
+#| fig.show: 'hide'
+
+download.dir <- fs::dir_create("~/projects/AP24.024_kickstart_master_thesis/", "RBNS", recurse = T)
+
+encode.all <- readr::read_tsv(
+  "https://www.encodeproject.org/metadata/?assay_title=eCLIP&assay_title=RNA+Bind-n-Seq&type=Experiment&files.analyses.status=released&files.preferred_default=true"
+)
+
+TARDBP.rbns <- encode.all %>%
+  dplyr::filter(Assay == "RNA Bind-n-Seq" & `Experiment target` == "TARDBP-human" & `Output type` == "enrichment") %>% mutate(
+    local.paths = file.path(download.dir, basename(`File download URL`))
+  )
+
+# Download the data
+for(i in 1:nrow(TARDBP.rbns)){
+  download.file(
+    url = TARDBP.rbns$`File download URL`[i],
+    destfile =  TARDBP.rbns$local.paths[i]
+  )
+}
+
+TARDBP.rbns.data <- lapply(TARDBP.rbns$local.paths, function(fn){
+  df <- readr::read_tsv(fn, show_col_types = F)
+  rbp <- colnames(df)[1] %>% stringr::str_remove_all("\\[|\\]")
+  colnames(df)[1] <- "sequence"
+  
+  df %>%
+    pivot_longer(-sequence, names_to = "concentration", values_to = "enrichment") %>%
+    add_column(rbp = rbp, target = rbp) %>%
+    dplyr::select(rbp, sequence, target, everything())
+}) %>%
+  bind_rows() %>%
+  mutate(
+    sequence.length = paste(nchar(sequence), "nt", sep = "-"),
+    concentration.numeric = concentration %>% stringr::str_remove(" nM") %>% as.numeric()
+  )
+
+# First identify the sequences that have enrichment that are more the 2 standard deviations above the mean
+TARDBP.rbns.data %<>% 
+  group_by(rbp, sequence.length, concentration) %>%
+  mutate(
+    above.cutoff = enrichment > mean(enrichment)+2*sd(enrichment)
+  )
+
+```
+
+### TDP43 eCLIP data
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| include: false
+#| results: 'hide'
+#| fig.show: 'hide'
+
+download.dir <- fs::dir_create("~/projects/AP24.024_kickstart_master_thesis/", "eCLIP", recurse = T)
+
+TARDBP.eclip <- encode.all %>%
+  dplyr::filter(Assay == "eCLIP" & `Output type` == "peaks" & `File format` == "bed narrowPeak" & `File assembly` == "GRCh38" & `Experiment target` == "TARDBP-human") %>% mutate(
+    local.paths = file.path(download.dir, basename(`File download URL`))
+  )
+
+# Download the data
+for(i in 1:nrow(TARDBP.eclip)){
+  download.file(
+    url = TARDBP.eclip$`File download URL`[i],
+    destfile =  TARDBP.eclip$local.paths[i]
+  )
+}
+
+# Read the downloaded data
+TARDBP.eclip <- lapply(seq_along(TARDBP.eclip$local.paths), function(i){
+  readr::read_tsv(TARDBP.eclip$local.paths[i], col_names = F) %>%
+    add_column(file.accession = TARDBP.eclip$`File accession`[i], biosample_term_name = TARDBP.eclip$`Biosample term name`[i])
+}) %>%
+  bind_rows() %>%
+  dplyr::rename("seqnames" = "X1", "start" = "X2", "end" = "X3", "strand" = "X6", "log2FoldEnrichment" = "X7", "-log10(Pval)" = "X8") %>%
+  mutate(seqnames = seqnames %>% stringr::str_remove("chr"))
+
+#DT::datatable(head(TARDBP.eclip, n = 10))
+```
+
+### Alternative splice sites from rMATs
+
+The alternative splice sites is isolated for the given chromosome, which can be changed if another is wanted.
+
+```{r}
+
+# Extracting the information and their ranges
+# Sorting, only one chromosome and only main # & type == "main"
+DOX_chr_main <- load("DOX_noDOX.RData")
+DOX_chr_main <- sort(subset(gr_combined, seqnames == "19"))
+
+```
+
+# Specify analysis
+
+Here you specify which chromosome and wich gene you want to investigate in the analysis
+
+```{r}
+# Extracting from folder
+mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr19.rds")
+mapped_7mer_df <- as.data.frame("mapped_7mer")
+
+Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr19.rds")
+Chr_simplePeaks_df <- as.data.frame(Chr_simplePeaks)
+
+# read it in or make it with the function collapse_proximity 
+collapsed_df <- readRDS("collapsed_df_chr19.rds")
+
+
+######### Specify which gene to look at ############
+### UNC13A - eCLIP and Taxonomic model ###
+UNC13A.txmodels <- extractTXmodelsFromAH(gene.of.interest = "UNC13A")
+UNC13A.gr <- genes(ensdb, filter =~ gene_name == "UNC13A")
+
+overlaps <- findOverlaps(GRanges(TARDBP.eclip), UNC13A.gr, type = "within")
+
+TARDBP.sites.on.UNC13A <- TARDBP.eclip[queryHits(overlaps),]
+#DT::datatable(TARDBP.sites.on.UNC13A)
+
+
+### HDGFL2 - eCLIP and Taxonomic model ###
+HDGFL2.txmodels <- extractTXmodelsFromAH(gene.of.interest = "HDGFL2")
+HDGFL2.gr <- genes(ensdb, filter =~ gene_name == "HDGFL2")
+
+overlaps <- findOverlaps(GRanges(TARDBP.eclip), HDGFL2.gr, type = "within")
+
+TARDBP.sites.on.HDGFL2 <- TARDBP.eclip[queryHits(overlaps),]
+#DT::datatable(TARDBP.sites.on.HDGFL2)
+```
+
+## Find overlaps
+
+The overlaps here will be used to get an idea of which areas to zoom in on when investigating a specific gene.
+
+```{r}
+# now to find the overlapping regions with TDP43
+## Overlapping two GRanges objects:
+table(!is.na(findOverlaps(DOX_chr_main, Chr_simplePeaks, select="arbitrary")))
+
+hits <- findOverlaps(DOX_chr_main, Chr_simplePeaks)
+subsetByOverlaps(DOX_chr_main, Chr_simplePeaks)
+```
+
+# Plot - Whole Gene
+
+PLOT: Including
+
+1.  txmodels of specific regions
+2.  alternative splice site
+3.  collapsed 7mers
+4.  collapsed with extentions
+5.  eCLIP data.
+
+If you want to see the plot for everywhere we see bindings of TDP43, you can use the following plot.
+
+This plot is currently zoomed in to a specific region so we can actually see the hits. When showing the whole chromosome, the binding peaks are to thin to see.
+
+```{r, fig.width=10, fig.height=10}
+#| label: fig-enrichments
+#| fig-cap: "Visualization of enrichment sorted regions and collapsed."
+#| fig-align: left
+#| echo: false
+#| fig-width: 10
+#| fig-height: 10
+# Define the highlighted regions
+DOX_chr19_main_df <- as.data.frame(DOX_chr19_main)
+highlighted_regions <- geom_rect(data = DOX_chr19_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
+                                 fill = "blue", alpha = 0.3)
+
+# Raw 7mer mapping plot
+p.simplepeaks <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+  geom_rect(show.legend = FALSE) +
+  highlighted_regions +
+  theme_bw() +
+  ylab("") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  guides(fill = guide_colorbar(title = "Enrichment")) +
+  facet_grid(~ factor("7-mers"))
+
+# TDB43 simple peaks
+p.CHR_simple <- ggplot(Chr_simplePeaks_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+  geom_rect(show.legend = TRUE) +
+  highlighted_regions +
+  theme_bw() +
+  ylab("") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  guides(fill = guide_colorbar(title = "Enrichment")) + 
+  facet_grid(~ factor("Simple peaks"))
+
+# Collapsed regions - close proximity
+p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, ymax = mean_enrichment, fill = mean_enrichment)) + 
+  geom_rect(show.legend = FALSE) +
+  highlighted_regions +
+  theme_bw() +
+  ylab("") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  guides(fill = guide_colorbar(title = "Mean Enrichment")) +
+  facet_grid(~ factor("Peak clusters"))
+
+# eCLIP information of UNC13A
+p.eclip <- ggplot(TARDBP.sites.on.UNC13A, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
+  geom_rect(show.legend = TRUE) +
+  theme_bw() +
+  ylab("") +
+  scale_x_continuous(labels = comma) +
+  scale_fill_distiller(palette = 'Spectral',limits = c(0, 6.5)) +
+  facet_grid(file.accession + biosample_term_name~.) + 
+  guides(fill = guide_colorbar(title = "Log2FoldEnrichment"))
+
+# taxonomic model of UNC13A
+p.txmodels <- plotTXmodelOverview(UNC13A.txmodels)
+                
+                
+# UNC13A retained introns
+#xmin <- 17602500
+#xmax <- 17630000
+
+# UNC13A whole gene
+xmin <- 17601336
+xmax <- 17688354
+  
+# HDGFL2 - near coding regions
+#xmin <- 4491664
+#xmax <- 4493320
+
+# HDGFL2 whole gene
+#xmin <- 4472297
+#xmax <- 4502207
+
+
+plt <- cowplot::plot_grid(
+  p.txmodels + coord_cartesian(xlim = c(xmin, xmax)),
+  p.simplepeaks + coord_cartesian(xlim = c(xmin, xmax)),
+  p.CHR_simple + coord_cartesian(xlim = c(xmin, xmax)),
+  p.CHR_collapsed + coord_cartesian(xlim = c(xmin, xmax)),
+  p.eclip + coord_cartesian(xlim = c(xmin, xmax), ylim = c(0, 6.5)),
+  
+  nrow = 5, byrow = TRUE, align = "hv", axis = "blr", rel_heights = c(2, 1, 1, 1, 1)
+)
+
+plt
+
+ggsave("UNC13A_WG.png", plot = plt, width = 12, height = 10)
+# ggsave("HDGFL2_WG.png", plot = plt, width = 12, height = 10)
+```
+
+# Zoom in
+
+Here we zoom in on the alternative splice site region.
+
+```{r, fig.width=10, fig.height=10}
+#| label: fig-enrichments
+#| fig-cap: "Visualization of enrichment sorted regions and collapsed."
+#| fig-align: left
+#| echo: false
+#| fig-width: 10
+#| fig-height: 10
+
+library(grid)
+library(cowplot)
+
+# HDGFL2 zoom
+#xmin <- 4491064
+#xmax <- 4494063
+
+# UNC13A zoom
+xmin <- 17641393 - 300
+xmax <- 17642961 + 300
+
+# Define the highlighted regions
+highlighted_regions <- geom_rect(data = DOX_chr19_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
+                                 fill = "blue", alpha = 0.3)
+
+# Raw 7mer mapping plot
+p.simplepeaks <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+  geom_rect(show.legend = FALSE) +
+  highlighted_regions +
+  theme_bw() +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  facet_grid(~ factor("7-mers"))
+
+# TDB43 simple peaks
+p.CHR_simple <- ggplot(Chr19_simplePeaks_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+  geom_rect(show.legend = FALSE) +
+  highlighted_regions +
+  theme_bw() +
+  ylab("") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  facet_grid(~ factor("Simple peaks"))
+
+# Collapsed regions - close proximity
+p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, ymax = mean_enrichment, fill = mean_enrichment)) + 
+  geom_rect(show.legend = FALSE) +
+  highlighted_regions +
+  theme_bw() +
+  ylab("") +
+  scale_x_continuous(labels = scales::comma) +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  facet_grid(~ factor("Peak clusters"))
+
+# txmodel
+p.txmodels <- plotTXmodelOverview(HDGFL2.txmodels)
+
+# Create a separate plot to extract the legend
+legend_plot <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+  geom_rect() +
+  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
+  guides(fill = guide_colorbar(title = "Enrichment")) +
+  theme_void() +
+  theme(legend.position = "bottom")
+
+
+# UNC13A retained introns
+#xmin <- 17602500
+#xmax <- 17630000
+
+# HDGFL2 - near coding regions
+#xmin <- 4491664
+#xmax <- 4493320
+
+# test HDGFL2
+#xmin <- 4489000
+#xmax <- 4498863
+
+# test - UNC13A
+#xmin <- 17639093
+#xmax <- 17648657
+
+
+# Combine the last three plots
+zoom <- cowplot::plot_grid(
+  p.txmodels + coord_cartesian(xlim = c(xmin, xmax)),
+  p.simplepeaks + coord_cartesian(xlim = c(xmin, xmax)),
+  p.CHR_simple + coord_cartesian(xlim = c(xmin, xmax)),
+  p.CHR_collapsed + coord_cartesian(xlim = c(xmin, xmax)),
+  nrow = 4, byrow = TRUE, align = "hv", axis = "blr", rel_heights = c(2, 1, 1, 1)
+)
+
+zoom
+
+
+# ggsave("HDGFL2_zoom.png", plot = zoom, width = 10, height = 4)
+# ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 4)
+
+```
