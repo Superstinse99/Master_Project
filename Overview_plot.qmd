@@ -50,7 +50,7 @@ ah <- AnnotationHub()
 ensdb <- ah[["AH109606"]]
 ```
 
-# Functions 
+# Functions
 
 These are the functions used in the program for plotting and extending the potential binding sites.
 
@@ -237,8 +237,11 @@ The alternative splice sites is isolated for the given chromosome, which can be 
 
 # Extracting the information and their ranges
 # Sorting, only one chromosome and only main # & type == "main"
-DOX_chr_main <- load("DOX_noDOX.RData")
+load("input_data/DOX_noDOX.RData")
 DOX_chr_main <- sort(subset(gr_combined, seqnames == "19"))
+
+# convert to dataframe
+DOX_chr_main_df <- as.data.frame(DOX_chr_main)
 
 ```
 
@@ -249,13 +252,13 @@ Here you specify which chromosome and wich gene you want to investigate in the a
 ```{r}
 # Extracting from folder
 mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr19.rds")
-mapped_7mer_df <- as.data.frame("mapped_7mer")
+mapped_7mer_df <- as.data.frame(mapped_7mer)
 
 Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr19.rds")
 Chr_simplePeaks_df <- as.data.frame(Chr_simplePeaks)
 
 # read it in or make it with the function collapse_proximity 
-collapsed_df <- readRDS("collapsed_df_chr19.rds")
+collapsed_df <- readRDS("input_data/collapsed_df_chr19.rds")
 
 
 ######### Specify which gene to look at ############
@@ -313,13 +316,14 @@ This plot is currently zoomed in to a specific region so we can actually see the
 #| echo: false
 #| fig-width: 10
 #| fig-height: 10
-# Define the highlighted regions
-DOX_chr19_main_df <- as.data.frame(DOX_chr19_main)
-highlighted_regions <- geom_rect(data = DOX_chr19_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
+
+# define alternative splice sites
+highlighted_regions <- geom_rect(data = DOX_chr_main_df, 
+                                 aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
                                  fill = "blue", alpha = 0.3)
 
 # Raw 7mer mapping plot
-p.simplepeaks <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+p.7mer <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
   geom_rect(show.legend = FALSE) +
   highlighted_regions +
   theme_bw() +
@@ -361,7 +365,7 @@ p.eclip <- ggplot(TARDBP.sites.on.UNC13A, aes(xmin = start, xmax = end, ymin = 0
   facet_grid(file.accession + biosample_term_name~.) + 
   guides(fill = guide_colorbar(title = "Log2FoldEnrichment"))
 
-# taxonomic model of UNC13A
+# taxonomic model of X gene
 p.txmodels <- plotTXmodelOverview(UNC13A.txmodels)
                 
                 
@@ -384,7 +388,7 @@ xmax <- 17688354
 
 plt <- cowplot::plot_grid(
   p.txmodels + coord_cartesian(xlim = c(xmin, xmax)),
-  p.simplepeaks + coord_cartesian(xlim = c(xmin, xmax)),
+  p.7mer + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_simple + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_collapsed + coord_cartesian(xlim = c(xmin, xmax)),
   p.eclip + coord_cartesian(xlim = c(xmin, xmax), ylim = c(0, 6.5)),
@@ -410,19 +414,16 @@ Here we zoom in on the alternative splice site region.
 #| fig-width: 10
 #| fig-height: 10
 
-library(grid)
-library(cowplot)
-
 # HDGFL2 zoom
 #xmin <- 4491064
 #xmax <- 4494063
 
 # UNC13A zoom
-xmin <- 17641393 - 300
-xmax <- 17642961 + 300
+xmin <- 17641393 - 1000
+xmax <- 17642961 + 1000
 
 # Define the highlighted regions
-highlighted_regions <- geom_rect(data = DOX_chr19_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
+highlighted_regions <- geom_rect(data = DOX_chr_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
                                  fill = "blue", alpha = 0.3)
 
 # Raw 7mer mapping plot
@@ -435,7 +436,7 @@ p.simplepeaks <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("7-mers"))
 
 # TDB43 simple peaks
-p.CHR_simple <- ggplot(Chr19_simplePeaks_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+p.CHR_simple <- ggplot(Chr_simplePeaks_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
   geom_rect(show.legend = FALSE) +
   highlighted_regions +
   theme_bw() +
@@ -455,7 +456,7 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # txmodel
-p.txmodels <- plotTXmodelOverview(HDGFL2.txmodels)
+p.txmodels <- plotTXmodelOverview(UNC13A.txmodels)
 
 # Create a separate plot to extract the legend
 legend_plot <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
@@ -464,23 +465,6 @@ legend_plot <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ym
   guides(fill = guide_colorbar(title = "Enrichment")) +
   theme_void() +
   theme(legend.position = "bottom")
-
-
-# UNC13A retained introns
-#xmin <- 17602500
-#xmax <- 17630000
-
-# HDGFL2 - near coding regions
-#xmin <- 4491664
-#xmax <- 4493320
-
-# test HDGFL2
-#xmin <- 4489000
-#xmax <- 4498863
-
-# test - UNC13A
-#xmin <- 17639093
-#xmax <- 17648657
 
 
 # Combine the last three plots
@@ -496,6 +480,6 @@ zoom
 
 
 # ggsave("HDGFL2_zoom.png", plot = zoom, width = 10, height = 4)
-# ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 4)
+ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 8)
 
 ```
