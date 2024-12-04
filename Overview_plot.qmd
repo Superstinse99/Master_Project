@@ -23,6 +23,10 @@ The dbplyr is expected to be version 2.3.4, if this is not the case, change it s
 #| echo: false
 #| message: false
 #| warning: false
+#| include: false
+#| results: 'hide'
+#| fig.show: 'hide'
+
 
 # Load necessary libraries
 library(Biostrings)
@@ -238,7 +242,7 @@ The alternative splice sites is isolated for the given chromosome, which can be 
 # Extracting the information and their ranges
 # Sorting, only one chromosome and only main # & type == "main"
 load("input_data/DOX_noDOX.RData")
-DOX_chr_main <- sort(subset(gr_combined, seqnames == "19"))
+DOX_chr_main <- sort(subset(gr_combined, seqnames == "8"))
 
 # convert to dataframe
 DOX_chr_main_df <- as.data.frame(DOX_chr_main)
@@ -251,14 +255,14 @@ Here you specify which chromosome and wich gene you want to investigate in the a
 
 ```{r}
 # Extracting from folder
-mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr19.rds")
+mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr8.rds")
 mapped_7mer_df <- as.data.frame(mapped_7mer)
 
-Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr19.rds")
+Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr8.rds")
 Chr_simplePeaks_df <- as.data.frame(Chr_simplePeaks)
 
 # read it in or make it with the function collapse_proximity 
-collapsed_df <- readRDS("input_data/collapsed_df_chr19.rds")
+collapsed_df <- readRDS("input_data/collapsed_df_chr8.rds")
 
 
 ######### Specify which gene to look at ############
@@ -279,6 +283,16 @@ HDGFL2.gr <- genes(ensdb, filter =~ gene_name == "HDGFL2")
 overlaps <- findOverlaps(GRanges(TARDBP.eclip), HDGFL2.gr, type = "within")
 
 TARDBP.sites.on.HDGFL2 <- TARDBP.eclip[queryHits(overlaps),]
+#DT::datatable(TARDBP.sites.on.HDGFL2)
+
+### STMN2 - eCLIP and Taxonomic model ###
+# NOTE: STMN2 has no eCLIP data, and will not be included in the plot #
+STMN2.txmodels <- extractTXmodelsFromAH(gene.of.interest = "STMN2")
+STMN2.gr <- genes(ensdb, filter =~ gene_name == "STMN2")
+
+overlaps <- findOverlaps(GRanges(TARDBP.eclip), STMN2.gr, type = "within")
+
+TARDBP.sites.on.STMN2 <- TARDBP.eclip[queryHits(overlaps),]
 #DT::datatable(TARDBP.sites.on.HDGFL2)
 ```
 
@@ -366,7 +380,7 @@ p.eclip <- ggplot(TARDBP.sites.on.UNC13A, aes(xmin = start, xmax = end, ymin = 0
   guides(fill = guide_colorbar(title = "Log2FoldEnrichment"))
 
 # taxonomic model of X gene
-p.txmodels <- plotTXmodelOverview(UNC13A.txmodels)
+p.txmodels <- plotTXmodelOverview(STMN2.txmodels)
                 
                 
 # UNC13A retained introns
@@ -374,8 +388,8 @@ p.txmodels <- plotTXmodelOverview(UNC13A.txmodels)
 #xmax <- 17630000
 
 # UNC13A whole gene
-xmin <- 17601336
-xmax <- 17688354
+#xmin <- 17601336
+#xmax <- 17688354
   
 # HDGFL2 - near coding regions
 #xmin <- 4491664
@@ -385,21 +399,26 @@ xmax <- 17688354
 #xmin <- 4472297
 #xmax <- 4502207
 
+# STMN2 whole gene
+xmin <- 79613000
+xmax <- 79664000
+
 
 plt <- cowplot::plot_grid(
   p.txmodels + coord_cartesian(xlim = c(xmin, xmax)),
   p.7mer + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_simple + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_collapsed + coord_cartesian(xlim = c(xmin, xmax)),
-  p.eclip + coord_cartesian(xlim = c(xmin, xmax), ylim = c(0, 6.5)),
+  #p.eclip + coord_cartesian(xlim = c(xmin, xmax), ylim = c(0, 6.5)),
   
   nrow = 5, byrow = TRUE, align = "hv", axis = "blr", rel_heights = c(2, 1, 1, 1, 1)
 )
 
 plt
 
-ggsave("UNC13A_WG.png", plot = plt, width = 12, height = 10)
-# ggsave("HDGFL2_WG.png", plot = plt, width = 12, height = 10)
+#ggsave("UNC13A_WG.png", plot = plt, width = 12, height = 10)
+#ggsave("HDGFL2_WG.png", plot = plt, width = 12, height = 10)
+ggsave("STMN2_WG.png", plot = plt, width = 12, height = 10)
 ```
 
 # Zoom in
@@ -419,15 +438,19 @@ Here we zoom in on the alternative splice site region.
 #xmax <- 4494063
 
 # UNC13A zoom
-xmin <- 17641393 - 1000
-xmax <- 17642961 + 1000
+#xmin <- 17641393 - 1000
+#xmax <- 17642961 + 1000
+
+# STMN2 zoom
+xmin <- 79616722 - 200 
+xmax <- 79617031 + 200
 
 # Define the highlighted regions
 highlighted_regions <- geom_rect(data = DOX_chr_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
                                  fill = "blue", alpha = 0.3)
 
 # Raw 7mer mapping plot
-p.simplepeaks <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
+p.7mer <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
   geom_rect(show.legend = FALSE) +
   highlighted_regions +
   theme_bw() +
@@ -456,21 +479,13 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # txmodel
-p.txmodels <- plotTXmodelOverview(UNC13A.txmodels)
-
-# Create a separate plot to extract the legend
-legend_plot <- ggplot(mapped_7mer_df, aes(xmin = start, xmax = end, ymin = 0, ymax = enrichment, fill = enrichment)) + 
-  geom_rect() +
-  scale_fill_distiller(palette = 'Spectral', limits = c(0, 2.4)) +
-  guides(fill = guide_colorbar(title = "Enrichment")) +
-  theme_void() +
-  theme(legend.position = "bottom")
+p.txmodels <- plotTXmodelOverview(STMN2.txmodels)
 
 
 # Combine the last three plots
 zoom <- cowplot::plot_grid(
   p.txmodels + coord_cartesian(xlim = c(xmin, xmax)),
-  p.simplepeaks + coord_cartesian(xlim = c(xmin, xmax)),
+  p.7mer + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_simple + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_collapsed + coord_cartesian(xlim = c(xmin, xmax)),
   nrow = 4, byrow = TRUE, align = "hv", axis = "blr", rel_heights = c(2, 1, 1, 1)
@@ -479,7 +494,8 @@ zoom <- cowplot::plot_grid(
 zoom
 
 
-# ggsave("HDGFL2_zoom.png", plot = zoom, width = 10, height = 4)
-ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 8)
+#ggsave("HDGFL2_zoom.png", plot = zoom, width = 10, height = 8)
+#ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 8)
+ggsave("STMN2_zoom.png", plot = zoom, width = 10, height = 8)
 
 ```
