@@ -242,7 +242,7 @@ The alternative splice sites is isolated for the given chromosome, which can be 
 # Extracting the information and their ranges
 # Sorting, only one chromosome and only main # & type == "main"
 load("input_data/DOX_noDOX.RData")
-DOX_chr_main <- sort(subset(gr_combined, seqnames == "8"))
+DOX_chr_main <- sort(subset(gr_combined, seqnames == "19"))
 
 # convert to dataframe
 DOX_chr_main_df <- as.data.frame(DOX_chr_main)
@@ -255,14 +255,14 @@ Here you specify which chromosome and wich gene you want to investigate in the a
 
 ```{r}
 # Extracting from folder
-mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr8.rds")
+mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr19.rds")
 mapped_7mer_df <- as.data.frame(mapped_7mer)
 
-Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr8.rds")
+Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr19.rds")
 Chr_simplePeaks_df <- as.data.frame(Chr_simplePeaks)
 
 # read it in or make it with the function collapse_proximity 
-collapsed_df <- readRDS("input_data/collapsed_df_chr8.rds")
+collapsed_df <- readRDS("input_data/collapsed_df_chr19.rds")
 
 
 ######### Specify which gene to look at ############
@@ -285,6 +285,15 @@ overlaps <- findOverlaps(GRanges(TARDBP.eclip), HDGFL2.gr, type = "within")
 TARDBP.sites.on.HDGFL2 <- TARDBP.eclip[queryHits(overlaps),]
 #DT::datatable(TARDBP.sites.on.HDGFL2)
 
+### CELF5 - eCLIP and Taxonomic model ###
+CELF5.txmodels <- extractTXmodelsFromAH(gene.of.interest = "CELF5")
+CELF5.gr <- genes(ensdb, filter =~ gene_name == "CELF5")
+
+overlaps <- findOverlaps(GRanges(TARDBP.eclip), CELF5.gr, type = "within")
+
+TARDBP.sites.on.CELF5 <- TARDBP.eclip[queryHits(overlaps),]
+#DT::datatable(TARDBP.sites.on.CELF5)
+
 ### STMN2 - eCLIP and Taxonomic model ###
 # NOTE: STMN2 has no eCLIP data, and will not be included in the plot #
 STMN2.txmodels <- extractTXmodelsFromAH(gene.of.interest = "STMN2")
@@ -293,7 +302,7 @@ STMN2.gr <- genes(ensdb, filter =~ gene_name == "STMN2")
 overlaps <- findOverlaps(GRanges(TARDBP.eclip), STMN2.gr, type = "within")
 
 TARDBP.sites.on.STMN2 <- TARDBP.eclip[queryHits(overlaps),]
-#DT::datatable(TARDBP.sites.on.HDGFL2)
+#DT::datatable(TARDBP.sites.on.STMN2)
 ```
 
 ## Find overlaps
@@ -370,7 +379,7 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # eCLIP information of UNC13A
-p.eclip <- ggplot(TARDBP.sites.on.UNC13A, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
+p.eclip <- ggplot(TARDBP.sites.on.CELF5, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
   geom_rect(show.legend = TRUE) +
   theme_bw() +
   ylab("") +
@@ -380,7 +389,7 @@ p.eclip <- ggplot(TARDBP.sites.on.UNC13A, aes(xmin = start, xmax = end, ymin = 0
   guides(fill = guide_colorbar(title = "Log2FoldEnrichment"))
 
 # taxonomic model of X gene
-p.txmodels <- plotTXmodelOverview(STMN2.txmodels)
+p.txmodels <- plotTXmodelOverview(CELF5.txmodels)
                 
                 
 # UNC13A retained introns
@@ -399,9 +408,13 @@ p.txmodels <- plotTXmodelOverview(STMN2.txmodels)
 #xmin <- 4472297
 #xmax <- 4502207
 
+# CELF5 whole gene
+xmin <-3226700
+xmax <-3295500 
+
 # STMN2 whole gene
-xmin <- 79613000
-xmax <- 79664000
+#xmin <- 79613000
+#xmax <- 79664000
 
 
 plt <- cowplot::plot_grid(
@@ -409,7 +422,7 @@ plt <- cowplot::plot_grid(
   p.7mer + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_simple + coord_cartesian(xlim = c(xmin, xmax)),
   p.CHR_collapsed + coord_cartesian(xlim = c(xmin, xmax)),
-  #p.eclip + coord_cartesian(xlim = c(xmin, xmax), ylim = c(0, 6.5)),
+  p.eclip + coord_cartesian(xlim = c(xmin, xmax), ylim = c(0, 6.5)),
   
   nrow = 5, byrow = TRUE, align = "hv", axis = "blr", rel_heights = c(2, 1, 1, 1, 1)
 )
@@ -418,7 +431,8 @@ plt
 
 #ggsave("UNC13A_WG.png", plot = plt, width = 12, height = 10)
 #ggsave("HDGFL2_WG.png", plot = plt, width = 12, height = 10)
-ggsave("STMN2_WG.png", plot = plt, width = 12, height = 10)
+#ggsave("STMN2_WG.png", plot = plt, width = 12, height = 10)
+ggsave("CELF5_WG.png", plot = plt, width = 12, height = 10)
 ```
 
 # Zoom in
@@ -441,9 +455,13 @@ Here we zoom in on the alternative splice site region.
 #xmin <- 17641393 - 1000
 #xmax <- 17642961 + 1000
 
+# CELF5 zoom
+xmin <- 3278000
+xmax <- 3285000
+
 # STMN2 zoom
-xmin <- 79616722 - 200 
-xmax <- 79617031 + 200
+#xmin <- 79616722 - 200 
+#xmax <- 79617031 + 200
 
 # Define the highlighted regions
 highlighted_regions <- geom_rect(data = DOX_chr_main_df, aes(xmin = start, xmax = end, ymin = -Inf, ymax = Inf), 
@@ -479,7 +497,7 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # txmodel
-p.txmodels <- plotTXmodelOverview(STMN2.txmodels)
+p.txmodels <- plotTXmodelOverview(CELF5.txmodels)
 
 
 # Combine the last three plots
@@ -496,6 +514,6 @@ zoom
 
 #ggsave("HDGFL2_zoom.png", plot = zoom, width = 10, height = 8)
 #ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 8)
-ggsave("STMN2_zoom.png", plot = zoom, width = 10, height = 8)
-
+#ggsave("STMN2_zoom.png", plot = zoom, width = 10, height = 8)
+ggsave("CELF5_zoom.png", plot = zoom, width = 10, height = 8)
 ```

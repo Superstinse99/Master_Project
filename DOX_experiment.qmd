@@ -24,9 +24,8 @@ library(BSgenome.Hsapiens.NCBI.GRCh38)
 Loading data
 
 ```{r}
-#setwd("/home/sagemaker-user/projects/DOXdata")
-file = "~/projects/SE.MATS.JC.txt"
-data = read.table(file, header = TRUE, sep = "", dec = ".")
+
+data = read.table("input_data/SE.MATS.JC.txt", header = TRUE, sep = "", dec = ".")
 
 ```
 
@@ -58,9 +57,9 @@ volcano_plot <- ggplot(data, aes(x = IncLevelDifference,
                      values = c("grey", "blue"), 
                      labels = c("Not significant", "Significant" )) +
   geom_point(size = 0.2) +
-  labs(title = "Significant diff. inclusion level values from log10(p-value = 0.5)", 
+  labs(title = "Significant diff. inclusion level values from -log10(p-value = 0.5)", 
        x = "Inclusion level difference", 
-       y = "log10(P-value)") + 
+       y = "-log10(P-value)") + 
   theme_minimal()
 
 # Display the plot

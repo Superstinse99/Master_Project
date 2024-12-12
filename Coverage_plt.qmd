@@ -11,6 +11,12 @@ Here we want to signify how much of the significant genes are covered by potenti
 ## Running Code
 
 ```{r}
+#| echo: false
+#| message: false
+#| warning: false
+#| include: false
+#| results: 'hide'
+#| fig.show: 'hide'
 
 library(AnnotationHub)
 library(ensembldb)
@@ -44,10 +50,10 @@ When you click the **Render** button a document will be generated that includes 
 
 ```{r}
 
-significant_genes <- read_tsv("salmon_sigs.tsv")
+significant_genes <- read_tsv("input_data/salmon_sigs.tsv")
 significant_genes_id <- significant_genes$ENSG
 # gene_ids_100 <- significant_genes$GeneIDs[1:200]
-peaks_dir <- "simple_peaks_data"
+peaks_dir <- "input_data/simple_peaks_data/"
 
 chromosomes <- c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "X", "Y")
 
@@ -120,8 +126,10 @@ calculate_coverage <- function(gene_list, ensdb, peaks_dir, chromosomes, output_
 
 results <- calculate_coverage(significant_genes_id, ensdb, peaks_dir, chromosomes, output_file)
 
+sign_results <- saveRDS(result, file = "sign_salmon_results")
 # Print the results
-print(results)
+
+results <- readRDS("sign_salmon_results")
 ```
 
 ## Creating the plot
@@ -131,8 +139,8 @@ print(results)
 #| fig-cap: "Visualization of enrichment sorted regions and collapsed."
 #| fig-align: left
 #| echo: false
-#| fig-width: 10
-#| fig-height: 5
+#| fig-width: 15
+#| fig-height: 8
 
 
 library(ggplot2)
@@ -140,7 +148,7 @@ library(dplyr)
 
 # Assuming 'results' is your data frame with columns 'gene_length', 'coverage', and 'gene_name'
 
-highlight_genes <- c("SPTLC1", "WDR7", "CAV1", "GLT8D1", "ARPP21", "DNAJC7", "KIF5A", "TIA1", "ANXA11", "CCNF", "NEK1", "C21ORF2", "TBK1", "CHCHD10", "MATR3", "TUBA4A", "ERBB4", "HNRNPA2B1", "HNRNPA1", "ATXN1", "EPHA4", "PFN1", "C9ORF72", "SQSTM1", "UBQLN2", "SIGMAR1", "ATXN2", "OPTN", "SPG11", "VCP", "ANG", "FIG4", "UNC13A", "ELP3", "FUS", "TARDBP", "CHMP2B", "HFE", "VAPB", "DCTN1", "ALS2", "SETX", "NEFH", "SOD1", "STMN2", "HDGFL2", "SOD1", "C21ORF2")
+highlight_genes <- c("SPTLC1", "WDR7", "CAV1", "GLT8D1", "ARPP21", "DNAJC7", "KIF5A", "TIA1", "ANXA11", "CCNF", "NEK1", "C21ORF2", "TBK1", "CHCHD10", "MATR3", "TUBA4A", "ERBB4", "HNRNPA2B1", "HNRNPA1", "ATXN1", "EPHA4", "PFN1", "C9ORF72", "SQSTM1", "UBQLN2", "SIGMAR1", "ATXN2", "OPTN", "SPG11", "VCP", "ANG", "FIG4", "UNC13A", "ELP3", "FUS", "TARDBP", "CHMP2B", "HFE", "VAPB", "DCTN1", "ALS2", "SETX", "NEFH", "SOD1", "STMN2", "HDGFL2", "SOD1", "C21ORF2", "HDGFL2", "CELF5")
 
 
 # Create a new column to indicate if the gene should be highlighted
@@ -170,8 +178,8 @@ Zoomin in with only significan names (significant according to articles)
 #| fig-cap: "Visualization of enrichment sorted regions and collapsed."
 #| fig-align: left
 #| echo: false
-#| fig-width: 10
-#| fig-height: 5
+#| fig-width: 15
+#| fig-height: 8
 
 
 # Create a new column to indicate if the gene should be highlighted
