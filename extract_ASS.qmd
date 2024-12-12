@@ -182,8 +182,8 @@ It is the same code, but with added error statements to ensure everything is han
 # Loop through each chromosome
 for (chr in chromosomes) {
   # Construct file paths
-  simple_peaks_file <- paste0("simple_peaks_data/simple_peaks_chr", chr, ".rds")
-  dox_file <- paste0("DOX_chr_data/DOX_chr", chr, ".rds")
+  simple_peaks_file <- paste0("input_data/simple_peaks_data/simple_peaks_chr", chr, ".rds")
+  dox_file <- paste0("input_data/DOX_chr_data/DOX_chr", chr, ".rds")
   
   # Print file paths for debugging
   cat("Processing chromosome:", chr, "\n")
@@ -264,6 +264,8 @@ Plot try
 ```{r}
 # Load necessary libraries
 library(ggplot2)
+
+all_chromosomes <- readRDS("all_chromosomes_combined.rds")
 
 # Count genes per chromosome
 chromosomes <- seqnames(all_chromosomes)
