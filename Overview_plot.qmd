@@ -154,7 +154,13 @@ Here we import the eCLIP, RBNS and alternative splice site data. the eCLIP and R
 
 download.dir <- fs::dir_create("~/projects/AP24.024_kickstart_master_thesis/", "RBNS", recurse = T)
 
+# If local
 encode.all <- readr::read_tsv("input_data/metadata.tsv")
+
+# if importing from website
+# encode.all <- readr::read_tsv(
+#  "https://www.encodeproject.org/metadata/?assay_title=eCLIP&assay_title=RNA+Bind-n-Seq&type=Experiment&files.analyses.status=released&files.preferred_default=true"
+#)
 
 TARDBP.rbns <- encode.all %>%
   dplyr::filter(Assay == "RNA Bind-n-Seq" & `Experiment target` == "TARDBP-human" & `Output type` == "enrichment") %>% mutate(
