@@ -157,12 +157,3 @@ for (chr in chromosomes) {
 }
 
 ```
-
-```{r}
-# print those within these regions
-start_coord <- 79610000
-end_coord <- 79668000    
-
-DOX_chr8_test <- sort(subset(gr_combined, seqnames == "8" & start(gr_combined) >= start_coord & end(gr_combined) <= end_coord))
-print(DOX_chr8_test)
-```
