@@ -46,7 +46,7 @@ ensdb <- ah[["AH109606"]]
 
 ```
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+Reading the salmon output of significant genes, locating the ENSG and the corresponding chromosome, calculating how much is covered by total binding sites against how long the gene is. The density of the potential binding sites:
 
 ```{r}
 
@@ -104,6 +104,7 @@ calculate_coverage <- function(gene_list, ensdb, peaks_dir, chromosomes, output_
     overlaps <- findOverlaps(gene_gr, simple_peaks)
     
     # Extract the overlapping ranges
+    # overlapping regions -> simple peaks withing the gene range
     overlapping_ranges <- simple_peaks[subjectHits(overlaps)]
     
     # Calculate the total length of the overlapping regions
@@ -126,10 +127,48 @@ calculate_coverage <- function(gene_list, ensdb, peaks_dir, chromosomes, output_
 
 results <- calculate_coverage(significant_genes_id, ensdb, peaks_dir, chromosomes, output_file)
 
-sign_results <- saveRDS(result, file = "sign_salmon_results")
+sign_results <- saveRDS(results, file = "sign_salmon_results")
 # Print the results
 
 results <- readRDS("sign_salmon_results")
+```
+
+Then create it for HDGFL2, as it was not found to be significant in the salmon quantification. Therefore it will be added afterwards to the plots below, so comparison is easier for later analysis.
+
+```{r}
+
+# Define the variables for a single gene
+gene_name <- "HDGFL2"  
+genomic_region <- "19" 
+
+start_position <- 4472297  
+end_position <- 4502207  
+
+simple_peaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr19.rds") 
+
+# length of the given gene
+gene_length <- end_position - start_position
+
+# Create a GRanges object
+gene_gr <- GRanges(
+  seqnames = genomic_region,
+  ranges = IRanges(start = start_position, end = end_position),
+  strand = "*"
+)
+
+overlaps <- findOverlaps(gene_gr, simple_peaks)              # overlaps between the gene and simple_peaks
+overlapping_ranges <- simple_peaks[subjectHits(overlaps)]    # Extract the overlapping ranges
+overlap_length <- sum(width(overlapping_ranges))             # total length of the overlapping regions
+coverage_percentage <- (overlap_length / gene_length) * 100  # coverage percentage
+
+# tibble with result
+HDGFL2_result <- tibble(
+  gene_name = gene_name,
+  gene_length = gene_length,
+  coverage = coverage_percentage
+)
+
+print(HDGFL2_result)
 ```
 
 ## Creating the plot
@@ -148,7 +187,7 @@ library(dplyr)
 
 # Assuming 'results' is your data frame with columns 'gene_length', 'coverage', and 'gene_name'
 
-highlight_genes <- c("SPTLC1", "WDR7", "CAV1", "GLT8D1", "ARPP21", "DNAJC7", "KIF5A", "TIA1", "ANXA11", "CCNF", "NEK1", "C21ORF2", "TBK1", "CHCHD10", "MATR3", "TUBA4A", "ERBB4", "HNRNPA2B1", "HNRNPA1", "ATXN1", "EPHA4", "PFN1", "C9ORF72", "SQSTM1", "UBQLN2", "SIGMAR1", "ATXN2", "OPTN", "SPG11", "VCP", "ANG", "FIG4", "UNC13A", "ELP3", "FUS", "TARDBP", "CHMP2B", "HFE", "VAPB", "DCTN1", "ALS2", "SETX", "NEFH", "SOD1", "STMN2", "HDGFL2", "SOD1", "C21ORF2", "HDGFL2", "CELF5")
+highlight_genes <- c("SPTLC1", "WDR7", "CAV1", "GLT8D1", "ARPP21", "DNAJC7", "KIF5A", "TIA1", "ANXA11", "CCNF", "NEK1", "C21ORF2", "TBK1", "CHCHD10", "MATR3", "TUBA4A", "ERBB4", "HNRNPA2B1", "HNRNPA1", "ATXN1", "EPHA4", "PFN1", "C9ORF72", "SQSTM1", "UBQLN2", "SIGMAR1", "ATXN2", "OPTN", "SPG11", "VCP", "ANG", "FIG4", "UNC13A", "ELP3", "FUS", "TARDBP", "CHMP2B", "HFE", "VAPB", "DCTN1", "ALS2", "SETX", "NEFH", "SOD1", "STMN2", "HDGFL2", "SOD1", "C21ORF2", "HDGFL2")
 
 
 # Create a new column to indicate if the gene should be highlighted
@@ -163,6 +202,8 @@ ggplot(results, aes(x = gene_length, y = coverage)) +
                           Significance == "Significant"), 
             aes(label = gene_name), 
             vjust = -0.5, hjust = 0.5) +
+  geom_text(data = HDGFL2_result, aes(x = gene_length, y = coverage, label = gene_name), 
+            vjust = -0.5, hjust = 0.5, color = "red") +  # Add label for the specific gene
   scale_color_manual(values = c("Significant" = "orange", "normal" = "lightblue")) +
   theme_minimal() +
   labs(x = "Gene Length", y = "Coverage in %", title = "Gene Length vs Coverage") 
@@ -194,6 +235,8 @@ ggplot(results, aes(x = gene_length, y = coverage)) +
                           Significance == "Significant"), 
             aes(label = gene_name), 
             vjust = -0.5, hjust = 0.5) +
+  geom_text(data = HDGFL2_result, aes(x = gene_length, y = coverage, label = gene_name), 
+            vjust = -0.5, hjust = 0.5, color = "red") +  # Add label for the specific gene
   scale_color_manual(values = c("Significant" = "orange", "normal" = "lightblue")) +
   theme_minimal() +
   labs(x = "Gene Length", y = "Coverage in %", title = "Gene Length vs Coverage") +
