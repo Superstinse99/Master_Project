@@ -154,9 +154,7 @@ Here we import the eCLIP, RBNS and alternative splice site data. the eCLIP and R
 
 download.dir <- fs::dir_create("~/projects/AP24.024_kickstart_master_thesis/", "RBNS", recurse = T)
 
-encode.all <- readr::read_tsv(
-  "https://www.encodeproject.org/metadata/?assay_title=eCLIP&assay_title=RNA+Bind-n-Seq&type=Experiment&files.analyses.status=released&files.preferred_default=true"
-)
+encode.all <- readr::read_tsv("input_data/metadata.tsv")
 
 TARDBP.rbns <- encode.all %>%
   dplyr::filter(Assay == "RNA Bind-n-Seq" & `Experiment target` == "TARDBP-human" & `Output type` == "enrichment") %>% mutate(
@@ -242,7 +240,7 @@ The alternative splice sites is isolated for the given chromosome, which can be 
 # Extracting the information and their ranges
 # Sorting, only one chromosome and only main # & type == "main"
 load("input_data/DOX_noDOX.RData")
-DOX_chr_main <- sort(subset(gr_combined, seqnames == "19"))
+DOX_chr_main <- sort(subset(gr_combined, seqnames == "16"))
 
 # convert to dataframe
 DOX_chr_main_df <- as.data.frame(DOX_chr_main)
@@ -285,13 +283,13 @@ overlaps <- findOverlaps(GRanges(TARDBP.eclip), HDGFL2.gr, type = "within")
 TARDBP.sites.on.HDGFL2 <- TARDBP.eclip[queryHits(overlaps),]
 #DT::datatable(TARDBP.sites.on.HDGFL2)
 
-### CELF5 - eCLIP and Taxonomic model ###
-CELF5.txmodels <- extractTXmodelsFromAH(gene.of.interest = "CELF5")
-CELF5.gr <- genes(ensdb, filter =~ gene_name == "CELF5")
+### FUS - eCLIP and Taxonomic model ###
+FUS.txmodels <- extractTXmodelsFromAH(gene.of.interest = "FUS")
+FUS.gr <- genes(ensdb, filter =~ gene_name == "FUS")
 
-overlaps <- findOverlaps(GRanges(TARDBP.eclip), CELF5.gr, type = "within")
+overlaps <- findOverlaps(GRanges(TARDBP.eclip), FUS.gr, type = "within")
 
-TARDBP.sites.on.CELF5 <- TARDBP.eclip[queryHits(overlaps),]
+TARDBP.sites.on.FUS <- TARDBP.eclip[queryHits(overlaps),]
 #DT::datatable(TARDBP.sites.on.CELF5)
 
 ### STMN2 - eCLIP and Taxonomic model ###
@@ -379,7 +377,7 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # eCLIP information of UNC13A
-p.eclip <- ggplot(TARDBP.sites.on.CELF5, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
+p.eclip <- ggplot(TARDBP.sites.on.HDGFL2, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
   geom_rect(show.legend = TRUE) +
   theme_bw() +
   ylab("") +
@@ -389,7 +387,7 @@ p.eclip <- ggplot(TARDBP.sites.on.CELF5, aes(xmin = start, xmax = end, ymin = 0,
   guides(fill = guide_colorbar(title = "Log2FoldEnrichment"))
 
 # taxonomic model of X gene
-p.txmodels <- plotTXmodelOverview(CELF5.txmodels)
+p.txmodels <- plotTXmodelOverview(HDGFL2.txmodels)
                 
                 
 # UNC13A retained introns
@@ -405,14 +403,12 @@ p.txmodels <- plotTXmodelOverview(CELF5.txmodels)
 #xmax <- 4493320
 
 # HDGFL2 whole gene
-#xmin <- 4472297
-#xmax <- 4502207
+xmin <- 4472297
+xmax <- 4502207
 
-# CELF5 whole gene
-xmin <-3226700
-xmax <-3295500 
 
 # STMN2 whole gene
+# no eclip for STMN2, need to be outcommented in the plot
 #xmin <- 79613000
 #xmax <- 79664000
 
@@ -432,7 +428,7 @@ plt
 #ggsave("UNC13A_WG.png", plot = plt, width = 12, height = 10)
 #ggsave("HDGFL2_WG.png", plot = plt, width = 12, height = 10)
 #ggsave("STMN2_WG.png", plot = plt, width = 12, height = 10)
-ggsave("CELF5_WG.png", plot = plt, width = 12, height = 10)
+#ggsave("CELF5_WG.png", plot = plt, width = 12, height = 10)
 ```
 
 # Zoom in
@@ -515,5 +511,5 @@ zoom
 #ggsave("HDGFL2_zoom.png", plot = zoom, width = 10, height = 8)
 #ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 8)
 #ggsave("STMN2_zoom.png", plot = zoom, width = 10, height = 8)
-ggsave("CELF5_zoom.png", plot = zoom, width = 10, height = 8)
+#ggsave("CELF5_zoom.png", plot = zoom, width = 10, height = 8)
 ```
