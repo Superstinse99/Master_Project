@@ -134,7 +134,8 @@ collapse_proximity <- function(ranges, extension = 100) {
   return(collapsed_ranges_df)
 }
 
-# collapsed_df <- collapse_proximity(Chr19_simplePeaks)
+#collapsed_df <- collapse_proximity(Chr_simplePeaks)
+#saveRDS(collapsed_df, "input_data/collapsed_df_chr16.rds")
 ```
 
 # Importing Data
@@ -259,14 +260,14 @@ Here you specify which chromosome and wich gene you want to investigate in the a
 
 ```{r}
 # Extracting from folder
-mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr19.rds")
+mapped_7mer <- readRDS("input_data/mapped_7mers/mapped_7mer_chr16.rds")
 mapped_7mer_df <- as.data.frame(mapped_7mer)
 
-Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr19.rds")
+Chr_simplePeaks <- readRDS("input_data/simple_peaks_data/simple_peaks_chr16.rds")
 Chr_simplePeaks_df <- as.data.frame(Chr_simplePeaks)
 
-# read it in or make it with the function collapse_proximity 
-collapsed_df <- readRDS("input_data/collapsed_df_chr19.rds")
+# read it in or make it with the function collapse_proximity
+collapsed_df <- readRDS("input_data/collapsed_df_chr16.rds")
 
 
 ######### Specify which gene to look at ############
@@ -383,7 +384,7 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # eCLIP information of UNC13A
-p.eclip <- ggplot(TARDBP.sites.on.HDGFL2, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
+p.eclip <- ggplot(TARDBP.sites.on.FUS, aes(xmin = start, xmax = end, ymin = 0, ymax = log2FoldEnrichment, fill = log2FoldEnrichment)) + 
   geom_rect(show.legend = TRUE) +
   theme_bw() +
   ylab("") +
@@ -393,7 +394,7 @@ p.eclip <- ggplot(TARDBP.sites.on.HDGFL2, aes(xmin = start, xmax = end, ymin = 0
   guides(fill = guide_colorbar(title = "Log2FoldEnrichment"))
 
 # taxonomic model of X gene
-p.txmodels <- plotTXmodelOverview(HDGFL2.txmodels)
+p.txmodels <- plotTXmodelOverview(FUS.txmodels)
                 
                 
 # UNC13A retained introns
@@ -409,9 +410,12 @@ p.txmodels <- plotTXmodelOverview(HDGFL2.txmodels)
 #xmax <- 4493320
 
 # HDGFL2 whole gene
-xmin <- 4472297
-xmax <- 4502207
+#xmin <- 4472297
+#xmax <- 4502207
 
+# FUS whole gene
+xmin <- 31180110
+xmax <- 31191500
 
 # STMN2 whole gene
 # no eclip for STMN2, need to be outcommented in the plot
@@ -435,6 +439,7 @@ plt
 #ggsave("HDGFL2_WG.png", plot = plt, width = 12, height = 10)
 #ggsave("STMN2_WG.png", plot = plt, width = 12, height = 10)
 #ggsave("CELF5_WG.png", plot = plt, width = 12, height = 10)
+ggsave("FUS_WG.png", plot = plt, width = 12, height = 10)
 ```
 
 # Zoom in
@@ -458,8 +463,12 @@ Here we zoom in on the alternative splice site region.
 #xmax <- 17642961 + 1000
 
 # CELF5 zoom
-xmin <- 3278000
-xmax <- 3285000
+#xmin <- 3278000
+#xmax <- 3285000
+
+# FUS zoom
+xmin <- 31183000
+xmax <- 31187500
 
 # STMN2 zoom
 #xmin <- 79616722 - 200 
@@ -499,7 +508,7 @@ p.CHR_collapsed <- ggplot(collapsed_df, aes(xmin = start, xmax = end, ymin = 0, 
   facet_grid(~ factor("Peak clusters"))
 
 # txmodel
-p.txmodels <- plotTXmodelOverview(CELF5.txmodels)
+p.txmodels <- plotTXmodelOverview(FUS.txmodels)
 
 
 # Combine the last three plots
@@ -518,4 +527,5 @@ zoom
 #ggsave("UNC13A_zoom.png", plot = zoom, width = 10, height = 8)
 #ggsave("STMN2_zoom.png", plot = zoom, width = 10, height = 8)
 #ggsave("CELF5_zoom.png", plot = zoom, width = 10, height = 8)
+ggsave("FUS_zoom.png", plot = zoom, width = 10, height = 8)
 ```
